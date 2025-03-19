@@ -1,9 +1,13 @@
 package com.spring;
 
+import java.beans.Introspector;
 import java.io.File;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -15,12 +19,14 @@ public class MyApplicationContext {
     private Class configClass;
     private Map<String, BeanDefinition> beanDefinitionMap = new HashMap<>();
     // 单例池
-    private Map<String, Object> singlletonObjects = new HashMap<>();
+    private Map<String, Object> singletonObjects = new HashMap<>();
+
+    private List<BeanPostProcessor> beanPostProcessorList = new LinkedList<>();
 
     public MyApplicationContext(Class configClass) {
         this.configClass = configClass;
 
-        // 扫描
+        // 扫描，产生 beanDefinitionMap
         scan(configClass);
 
         // 创建单例 Bean
@@ -30,7 +36,7 @@ public class MyApplicationContext {
             String scope = beanDefinition.getScope();
             if (isSingletonBean(scope)) {
                 Object bean = createBean(beanName, beanDefinition);
-                singlletonObjects.put(beanName, bean);
+                singletonObjects.put(beanName, bean);
             }
         }
     }
@@ -51,8 +57,15 @@ public class MyApplicationContext {
                     Class<?> clazz = classLoader.loadClass(absolutePath);
                     // 如果是 Bean
                     if (clazz.isAnnotationPresent(Component.class)) {
+                        if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
+                            BeanPostProcessor beanPostProcessor = (BeanPostProcessor) clazz.getConstructor().newInstance();
+                            beanPostProcessorList.add(beanPostProcessor);
+                        }
                         Component componentAnnotation = clazz.getAnnotation(Component.class);
                         String beanName = componentAnnotation.value();
+                        if ("".equals(beanName)) {
+                            beanName = Introspector.decapitalize(clazz.getSimpleName());
+                        }
                         BeanDefinition beanDefinition = new BeanDefinition();
                         beanDefinition.setType(clazz);
                         beanDefinition.setLazy(false);
@@ -68,6 +81,14 @@ public class MyApplicationContext {
                         beanDefinitionMap.put(beanName, beanDefinition);
                     }
                 } catch (ClassNotFoundException e) {
+                    throw new RuntimeException(e);
+                } catch (InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                } catch (InstantiationException e) {
+                    throw new RuntimeException(e);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                } catch (NoSuchMethodException e) {
                     throw new RuntimeException(e);
                 }
             }
@@ -85,7 +106,11 @@ public class MyApplicationContext {
         String scope = beanDefinition.getScope();
         if (isSingletonBean(scope)) {
             // 单例 Bean
-            Object singletonBean = singlletonObjects.get(beanName);
+            Object singletonBean = singletonObjects.get(beanName);
+            if (singletonBean == null) {
+                singletonBean = createBean(beanName, beanDefinition);
+                singletonObjects.put(beanName, singletonBean);
+            }
             return singletonBean;
         } else {
             // 原型 Bean
@@ -99,6 +124,28 @@ public class MyApplicationContext {
         Object instance = null;
         try {
             instance = clazz.getConstructor().newInstance();
+            // 依赖注入
+            for (Field field : instance.getClass().getDeclaredFields()) {
+                if (field.isAnnotationPresent(Autowired.class)) {
+                    field.setAccessible(true);
+                    field.set(instance, getBean(field.getName()));
+                }
+            }
+
+            // Bean 前处理器
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                instance = beanPostProcessor.postProcessBeforeInitialization(instance, beanName);
+            }
+
+            // 初始化
+            if (instance instanceof InitializingBean) {
+                ((InitializingBean) instance).afterPropertiesSet();
+            }
+
+            // Bean 后处理器
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                instance = beanPostProcessor.postProcessAfterInitialization(instance, beanName);
+            }
         } catch (InstantiationException | IllegalAccessException
                  | InvocationTargetException | NoSuchMethodException e) {
             throw new RuntimeException(e);

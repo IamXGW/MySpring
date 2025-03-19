@@ -1,5 +1,8 @@
 package com.iamxgw;
 
+import com.iamxgw.service.OrderService;
+import com.iamxgw.service.UserInterface;
+import com.iamxgw.service.UserService;
 import com.spring.MyApplicationContext;
 
 /**
@@ -8,8 +11,10 @@ import com.spring.MyApplicationContext;
 public class Main {
     public static void main(String[] args) {
         MyApplicationContext context = new MyApplicationContext(AppConfig.class);
-        System.out.println(context.getBean("userService"));
-        System.out.println(context.getBean("userService"));
-        System.out.println(context.getBean("userService"));
+        UserInterface userService = (UserInterface) context.getBean("userService");
+        userService.test();
+
+        OrderService orderService = (OrderService) context.getBean("orderService");
+        orderService.test();
     }
 }

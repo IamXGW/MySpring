@@ -1,6 +1,8 @@
 package com.iamxgw.service;
 
+import com.spring.Autowired;
 import com.spring.Component;
+import com.spring.InitializingBean;
 
 /**
  * @author: IamXGW
@@ -8,8 +10,18 @@ import com.spring.Component;
  */
 //@Scope("prototype")
 @Component("userService")
-public class UserService {
+public class UserService implements InitializingBean, UserInterface {
+
+    @Autowired
+    OrderService orderService;
+
+    @Override
+    public void afterPropertiesSet() {
+        System.out.println("初始化");
+    }
+
+    @Override
     public void test() {
-        System.out.println("test");
+        System.out.println("UserService::test");
     }
 }
